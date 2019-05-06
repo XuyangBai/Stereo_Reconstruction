@@ -17,12 +17,11 @@ def plot_epipolar_line(img, F, x, epipole=None, show_epipole=True):
     """ Plot the epipole and epipolar line F*x=0
         in an image. F is the fundamental matrix 
         and x a point in the other image."""
-
     m, n = img.shape[:2]
     line = np.dot(F, x)
 
     # epipolar line parameter and values
-    t = np.linspace(0, n, 100)
+    t = np.linspace(0, n - 1, 100)
     lt = np.array([(line[2] + line[0] * tt) / (-line[1]) for tt in t])
 
     # take only line points inside the image

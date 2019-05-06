@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import os
 import matplotlib.pyplot as plt
 from scipy import linalg
 from draw_epipolar import plot_epipolar_line
@@ -8,7 +9,8 @@ from ransac import ransac
 
 def read_image(filename1):
     img = cv2.imread(filename1)
-    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return img
 
 
 def feature_match(img1, img2):
@@ -45,7 +47,7 @@ def feature_match(img1, img2):
 
 def calculate_fundamental_mat_ransac(data, model, maxiter, match_theshold):
     F, ransac_data = ransac(data, model, 8, maxiter, match_theshold, int(0.5 * data.shape[0]), return_all=True)
-    mask = np.zeros([matching_points1.shape[0], 1])
+    mask = np.zeros([data.shape[0], 1])
     mask[ransac_data['inliers']] = 1
     return F, mask
 
@@ -144,8 +146,11 @@ def decompose_essential_mat(E, pts1, pts2):
     return R, T
 
 
-def show_epipolar(img1, img2, pts1, pts2, F, show_epipole):
+def show_epipolar(img1, img2, pts1, pts2, F, filename, show_epipole):
     # show epipolar line
+    plt.figure()
+    img1 = cv2.cvtColor(img1, cv2.COLOR_GRAY2BGR)
+    img2 = cv2.cvtColor(img2, cv2.COLOR_GRAY2BGR)
     points1_homo = np.hstack([pts1, np.ones([pts1.shape[0], 1])])
     points2_homo = np.hstack([pts2, np.ones([pts2.shape[0], 1])])
     plt.subplot(121)
@@ -159,55 +164,94 @@ def show_epipolar(img1, img2, pts1, pts2, F, show_epipole):
     for i in range(5):
         # draw the epipolar line for points2[i] on img2
         plot_epipolar_line(img2, F.transpose(), points1_homo[i], show_epipole=show_epipole)
-    plt.show()
+    # plt.show()
+    plt.savefig("./data/epipolar_line/{}.png".format(filename))
 
 
-if __name__ == '__main__':
-    # stereo reconstruction for rectified image pairs
-    # img0 = read_image('data/rectified/01/im0.png')
-    # img1 = read_image('data/rectified/01/im1.png')
-    # _, _, _ = feature_match(img0, img1)
-    K1 = np.array([
-        [541.911, 0, 499.646],
-        [0, 541.618, 231.773],
-        [0, 0, 1],
-    ])
-    K2 = np.array([
-        [538.731, 0, 503.622],
-        [0, 538.615, 265.447],
-        [0, 0, 1],
-    ])
-    K1_inv = linalg.inv(K1)
-    K2_inv = linalg.inv(K2)
-
-    # stereo reconstruction for non-rectified image pairs
-    img1 = read_image('data/non-rectified/02/im0.png')
-    img2 = read_image('data/non-rectified/02/im1.png')
+def draw_epipolar(img1, img2, filename):
     # find the corrsponding points using SIFT feature.
     matching_points1, matching_points2, matches = feature_match(img1, img2)
     data = np.hstack([matching_points1, matching_points2])
     # estimate the fundamental matrix using RANSAC based 8 point algorithm
-    F, mask = calculate_fundamental_mat_ransac(data, EightPointModel(), maxiter=10000, match_theshold=0.1)
-    print(F)
-    print("inliner num:", np.sum(mask == 1))
-    # F, mask = cv2.findFundamentalMat(matching_points1, matching_points2, cv2.FM_RANSAC)
+    # F, mask = calculate_fundamental_mat_ransac(data, EightPointModel(), maxiter=10000, match_theshold=0.1)
     # print(F)
     # print("inliner num:", np.sum(mask == 1))
+    F, mask = cv2.findFundamentalMat(matching_points1, matching_points2, cv2.FM_RANSAC)
+    print(F)
+    print("inliner num:", np.sum(mask == 1))
     # select only inlier points
     pts1 = matching_points1[mask.ravel() == 1]
     pts2 = matching_points2[mask.ravel() == 1]
 
-    show_epipolar(img1, img2, pts1, pts2, F, show_epipole=True)
-    show_epipolar(img1, img2, pts1, pts2, F, show_epipole=False)
+    # show_epipolar(img1, img2, pts1, pts2, F, show_epipole=True)
+    show_epipolar(img1, img2, pts1, pts2, F, filename=filename, show_epipole=False)
 
+
+if __name__ == '__main__':
+    for filename in os.listdir("./data/non-rectified"):
+        # stereo reconstruction for non-rectified image pairs
+        if filename != 'cameras.txt':
+            img1 = read_image('data/non-rectified/{0}/im0.png'.format(filename))
+            img2 = read_image('data/non-rectified/{0}/im1.png'.format(filename))
+            draw_epipolar(img1, img2, filename)
+
+    # K1 = np.array([
+    #     [541.911, 0, 499.646],
+    #     [0, 541.618, 231.773],
+    #     [0, 0, 1],
+    # ])
+    # K2 = np.array([
+    #     [538.731, 0, 503.622],
+    #     [0, 538.615, 265.447],
+    #     [0, 0, 1],
+    # ])
+    # K1_inv = linalg.inv(K1)
+    # K2_inv = linalg.inv(K2)
     # get essential matrix from F
-    E1 = np.dot(K1, np.dot(F, K1_inv))
-    E2 = np.dot(K1, np.dot(F, K2_inv))
-    #
-    # # decompose essential matrix E to get R and t
-    R1, t1 = decompose_essential_mat(E1, pts1, pts2)
+    # E1 = np.dot(K1, np.dot(F, K1_inv))
+    # E2 = np.dot(K1, np.dot(F, K2_inv))
+    # #
+    # # # decompose essential matrix E to get R and t
+    # R1, t1 = decompose_essential_mat(E1, pts1, pts2)
     # R2, t2 = decompose_essential_mat(E2, pts1, pts2)
-    # print(R1, t1)
-    # print(R2, t2)
-    # print(linalg.inv(R1).dot(R2))
-    # print(t2 - t1)
+    # print("R1", R1)
+    # print("R2", R2)
+    # # print(R1, t1)
+    # # print(R2, t2)
+    # # print(linalg.inv(R1).dot(R2))
+    # # print(t2 - t1)
+    # # perform the rectification
+    # d = np.array([0, 0, 0, 0, 0, 0, 0, 0]).reshape(1, 8)
+    # R1, R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(K1, d, K2, d, img1.shape[:2], linalg.inv(R1).dot(R2), t1 - t2, alpha=1.0)
+    # print("R1", R1)
+    # print("R2", R2)
+    #
+    # # R1 = np.eye(3)
+    # # R2 = np.eye(3)
+    # mapx1, mapy1 = cv2.initUndistortRectifyMap(K1, d, R1, K1, img1.shape[:2], cv2.CV_32F)
+    # mapx2, mapy2 = cv2.initUndistortRectifyMap(K2, d, R2, K2, img2.shape[:2], cv2.CV_32F)
+    # img_rect1 = cv2.remap(img1, mapx1, mapy1, cv2.INTER_LINEAR)
+    # img_rect2 = cv2.remap(img2, mapx2, mapy2, cv2.INTER_LINEAR)
+    # plt.subplot(121)
+    # plt.imshow(img_rect1)
+    # # plt.show()
+    # plt.subplot(122)
+    # plt.imshow(img_rect2)
+    # plt.show()
+    # # plt.show()
+    #
+    # # draw the images side by side
+    # # total_size = (max(img_rect1.shape[0], img_rect2.shape[0]), img_rect1.shape[1] + img_rect2.shape[1])
+    # # img = np.zeros(total_size, dtype=np.uint8)
+    # # img[:img_rect1.shape[0], :img_rect1.shape[1]] = img_rect1
+    # # img[:img_rect2.shape[0], img_rect1.shape[1]:] = img_rect2
+    # #
+    # # draw horizontal lines every 25 px accross the side by side image
+    # # for i in range(20, img.shape[0], 25):
+    # #     cv2.line(img, (0, i), (img.shape[1], i), (255, 0, 0))
+    #
+    # # cv2.imshow('rectified', img)
+    # # cv2.waitKey(0)
+    # plt.figure()
+    # plt.imshow(img)
+    # plt.show()
